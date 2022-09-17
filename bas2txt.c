@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct token {
@@ -14,7 +15,18 @@ struct token {
 #define INC_INDENT 0x04
 #define DEC_INDENT 0x08
 
-static const struct token tokens[] = {
+static const char low_tokens[8][9] = {
+    "Missing",
+    "No such",
+    "Bad",
+    "range",
+    "variable",
+    "Out of",
+    "No",
+    "space"
+};
+
+static const struct token high_tokens[] = {
     /* Operators */
     { "AND",      SPC_BEFORE|SPC_AFTER }, // 80
     { "DIV",      SPC_BEFORE|SPC_AFTER }, // 81
@@ -156,102 +168,128 @@ static const struct token tokens[] = {
     { "OSCLI",    SPC_AFTER            }  // FF
 };
 
-static int bas2txt(const char *fn, FILE *fp)
+static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent)
 {
-    int status = 0, indent = 0;
-    unsigned char hdr[4];
-    size_t nbytes = fread(hdr, 1, sizeof(hdr), fp);
-    if (nbytes == 4 && hdr[0] == 0x0d) {
-        do {
-            unsigned len = hdr[3] - 4;
-            unsigned char line[253];
-            if (fread(line, len, 1, fp) != 1) {
-                status = 1;
-                break;
-            }
-            printf("%5u ", hdr[1] << 8 | hdr[2]);
-            /* pre-scan the line for any change in indent. */
-            int delta = 0;
-            const unsigned char *ptr = line;
-            const unsigned char *end = line + len;
-            while (ptr < end) {
-                int ch = *ptr++;
-                if (ch & 0x80) {
-                    const struct token *t = tokens + (ch & 0x7f);
-                    unsigned flags = t->flags;
-                    if (flags & INC_INDENT)
-                        delta++;
-                    else if (flags & DEC_INDENT)
-                        delta--;
-                }
-            }
-            /* process a decreased indent before printing the line */
-            if (delta < 0) {
-                indent += delta;
-                if (indent < 0)
-                    indent = 0;
-            }
-            for (int i = indent; i; --i) {
-                putchar(' ');
-                putchar(' ');
-            }
-            /* now print the line */
-            bool did_space = true;
-            bool need_space = false;
-            ptr = line;
-            while (ptr < end) {
-                int ch = *ptr++;
-                if (ch & 0x80) {
-                    const struct token *t = tokens + (ch & 0x7f);
-                    unsigned flags = t->flags;
-                    if (!did_space && (need_space || (flags & SPC_BEFORE)))
-                        putchar(' ');
-                    if (ch == 0x8d) {
-                        unsigned b1 = ptr[0];
-                        unsigned lsb = ((b1 & 0x30) << 2) ^ ptr[1];
-                        unsigned msb = ((b1 & 0x0c) << 4) ^ ptr[2];
-                        printf("%u", (msb << 8) | lsb);
-                        ptr += 3;
-                    }
-                    else
-                        fputs(t->text, stdout);
-                    did_space = need_space = false;
-                    if (flags & SPC_AFTER)
-                        need_space = true;
-                }
-                else {
-                    if (ch == ' ' || ch == ':') {
-                        need_space = false;
-                        did_space = true;
-                    }
-                    else if (need_space && !did_space) {
-                        need_space = false;
-                        did_space = true;
-                        putchar(' ');
-                    }
-                    else
-                        did_space = false;
-                    putchar(ch);
-                }
-            }
-            putchar('\n');
-            if (delta > 0)
-                indent += delta;
-            nbytes = fread(hdr, 1, sizeof(hdr), fp);
-        } while (nbytes == 4 && hdr[0] == 0x0d);
-
-        if (status || nbytes != 2 || hdr[0] != 0x0d || hdr[1] != 0xff) {
-            fprintf(stderr, "%s: premature EOF/corrupt BASIC program", fn);
-            status = 2;
+    printf("%5u ", lineno);
+    /* pre-scan the line for any change in indent. */
+    int delta = 0;
+    const unsigned char *ptr = line;
+    const unsigned char *end = line + len;
+    while (ptr < end) {
+        int ch = *ptr++;
+        if (ch & 0x80) {
+            const struct token *t = high_tokens + (ch & 0x7f);
+            unsigned flags = t->flags;
+            if (flags & INC_INDENT)
+                delta++;
+            else if (flags & DEC_INDENT)
+                delta--;
         }
     }
-    else if (nbytes == 0)
-        fprintf(stderr, "%s: empty file\n", fn);
-    else if (nbytes != 2 || hdr[0] != 0x0d || hdr[1] != 0xff) {
-        fprintf(stderr, "%s: not a BASIC program", fn);
-        status = 2;
+    /* process a decreased indent before printing the line */
+    if (delta < 0) {
+        indent += delta;
+        if (indent < 0)
+            indent = 0;
     }
-    return status;
+    for (int i = indent; i; --i) {
+        putchar(' ');
+        putchar(' ');
+    }
+    /* now print the line */
+    bool did_space = true;
+    bool need_space = false;
+    ptr = line;
+    while (ptr < end) {
+        int ch = *ptr++;
+        if (ch & 0x80) {
+            const struct token *t = high_tokens + (ch & 0x7f);
+            unsigned flags = t->flags;
+            if (!did_space && (need_space || (flags & SPC_BEFORE)))
+                putchar(' ');
+            if (ch == 0x8d) {
+                unsigned b1 = ptr[0];
+                unsigned lsb = ((b1 & 0x30) << 2) ^ ptr[1];
+                unsigned msb = ((b1 & 0x0c) << 4) ^ ptr[2];
+                printf("%u", (msb << 8) | lsb);
+                ptr += 3;
+            }
+            else
+                fputs(t->text, stdout);
+            did_space = need_space = false;
+            if (flags & SPC_AFTER)
+                need_space = true;
+        }
+        else {
+            if (ch == ' ' || ch == ':') {
+                need_space = false;
+                did_space = true;
+            }
+            else if (need_space && !did_space) {
+                need_space = false;
+                did_space = true;
+                putchar(' ');
+            }
+            else
+                did_space = false;
+            if (ch >= 0x01 && ch <= 0x08)
+                fputs(low_tokens[ch-1], stdout);
+            else
+                putchar(ch);
+        }
+    }
+    putchar('\n');
+    if (delta > 0)
+        indent += delta;
+    return indent;
+}
+
+static unsigned char *is_wilson(unsigned char *prog, unsigned char *file_end)
+{
+    file_end -= 2;
+    while (prog <= file_end) {
+        if (prog[0] != 0x0d)
+            return NULL;
+        if (prog[1] == 0xff)
+            return prog;
+        prog += prog[3];
+    }
+    return NULL;
+}
+
+static void wilson2txt(unsigned char *prog, unsigned char *prog_end)
+{
+    unsigned indent = 0;
+    while (prog < prog_end) {
+        unsigned lineno = (prog[1] << 8) | prog[2];
+        unsigned len = prog[3];
+        indent = bas2txt(prog+4, len-4, lineno, indent);
+        prog += len;
+    }
+}
+
+static unsigned char *is_russell(unsigned char *prog, unsigned char *file_end)
+{
+    file_end -= 3;
+    while (prog < file_end) {
+        if (prog[0] == 0x00 && prog[1] == 0xff && prog[2] == 0xff)
+            return prog;
+        prog += prog[0];
+        if (prog[-1] != 0x0d)
+            return NULL;
+    }
+    return NULL;
+}
+
+static void russell2txt(unsigned char *prog, unsigned char *prog_end)
+{
+    unsigned indent = 0;
+    while (prog < prog_end) {
+        unsigned len = prog[0];
+        unsigned lineno = prog[1] | (prog[2] << 8);
+        indent = bas2txt(prog + 3, len - 4, lineno, indent);
+        prog += len;
+    }
 }
 
 int main(int argc, char **argv)
@@ -262,17 +300,57 @@ int main(int argc, char **argv)
             const char *fn = *++argv;
             FILE *fp = fopen(fn, "rb");
             if (fp) {
-                if (bas2txt(fn, fp))
-                    status = 1;
+                if (!fseek(fp, 0L, SEEK_END)) {
+                    long size = ftell(fp);
+                    if (size == 0) {
+                        fprintf(stderr, "bas2txt: %s is an empty file\n", fn);
+                        status = 3;
+                    }
+                    else if (size > 0x400000) { // 4Mb
+                        fprintf(stderr, "bas2txt: %s is too big to be BBC BASIC\n", fn);
+                        status = 3;
+                    }
+                    else {
+                        unsigned char *prog = malloc(size);
+                        if (prog) {
+                            rewind(fp);
+                            if (fread(prog, size, 1, fp) == 1) {
+                                unsigned char *prog_end, *file_end = prog + size;
+                                if ((prog_end = is_wilson(prog, file_end)))
+                                    wilson2txt(prog, prog_end);
+                                else if ((prog_end = is_russell(prog, file_end)))
+                                    russell2txt(prog, prog_end);
+                                else {
+                                    fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", fn);
+                                    status = 3;
+                                }
+                            }
+                            else {
+                                fprintf(stderr, "bas2txt: read error on %s: %s", fn, strerror(errno));
+                                status = 2;
+                            }
+                        }
+                        else {
+                            fprintf(stderr, "bas2txt: out of memory reading %s\n", fn);
+                            status = 4;
+                        }
+                    }
+                }
+                else {
+                    fprintf(stderr, "bas2txt: seek error on %s: %s", fn, strerror(errno));
+                    status = 2;
+                }
                 fclose(fp);
             }
             else {
                 fprintf(stderr, "bas2txt: unable to open '%s': %s", fn, strerror(errno));
-                status = 1;
+                status = 2;
             }
         } while (--argc);
     }
-    else
-        status = bas2txt("stdin", stdin);
+    else {
+        fputs("Usage: bas2txt <file> [ ... ]\n", stderr);
+        status = 1;
+    }
     return status;
 }
