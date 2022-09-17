@@ -171,26 +171,22 @@ static const struct token high_tokens[] = {
 static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent)
 {
     printf("%5u ", lineno);
-    /* pre-scan the line for any change in indent. */
-    int delta = 0;
+    /* pre-scan the line for a decrease in indent. */
+    bool in_str = false;
     const unsigned char *ptr = line;
     const unsigned char *end = line + len;
     while (ptr < end) {
         int ch = *ptr++;
-        if (ch & 0x80) {
-            const struct token *t = high_tokens + (ch & 0x7f);
-            unsigned flags = t->flags;
-            if (flags & INC_INDENT)
-                delta++;
-            else if (flags & DEC_INDENT)
-                delta--;
+        if (in_str) {
+            if (ch == '"')
+                in_str = false;
         }
-    }
-    /* process a decreased indent before printing the line */
-    if (delta < 0) {
-        indent += delta;
-        if (indent < 0)
-            indent = 0;
+        else if (ch & 0x80) {
+            if (high_tokens[ch & 0x7f].flags & DEC_INDENT && indent > 0)
+                --indent;
+        }
+        else if (ch == '"')
+            in_str = true;
     }
     for (int i = indent; i; --i) {
         putchar(' ');
@@ -199,12 +195,20 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
     /* now print the line */
     bool did_space = true;
     bool need_space = false;
+    in_str = false;
     ptr = line;
     while (ptr < end) {
         int ch = *ptr++;
-        if (ch & 0x80) {
+        if (in_str) {
+            putchar(ch);
+            if (ch == '"')
+                in_str = false;
+        }
+        else if (ch & 0x80) {
             const struct token *t = high_tokens + (ch & 0x7f);
             unsigned flags = t->flags;
+            if (flags & INC_INDENT)
+                ++indent;
             if (!did_space && (need_space || (flags & SPC_BEFORE)))
                 putchar(' ');
             if (ch == 0x8d) {
@@ -221,14 +225,16 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 need_space = true;
         }
         else {
-            if (ch == ' ' || ch == ':') {
-                need_space = false;
-                did_space = true;
-            }
-            else if (need_space && !did_space) {
+            if (need_space && !did_space) {
                 need_space = false;
                 did_space = true;
                 putchar(' ');
+            }
+            if (ch == '"')
+                in_str = true;
+            else if (ch == ' ' || ch == ':') {
+                need_space = false;
+                did_space = true;
             }
             else
                 did_space = false;
@@ -239,8 +245,6 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         }
     }
     putchar('\n');
-    if (delta > 0)
-        indent += delta;
     return indent;
 }
 
