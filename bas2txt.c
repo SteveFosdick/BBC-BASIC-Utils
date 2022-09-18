@@ -169,9 +169,32 @@ static const struct token high_tokens[] = {
     { "OSCLI",    SPC_AFTER            }  // FF
 };
 
-static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent)
+struct outcfg {
+    const char *fmt_lineno;
+    const char *fmt_token;
+    const char *str_prefix;
+    const char *str_suffix;
+};
+
+static const struct outcfg cfg_plain =
 {
-    printf("%5u ", lineno);
+    "%5u ",
+    "%s",
+    "",
+    ""
+};
+
+static const struct outcfg cfg_colour =
+{
+    "\e[38;5;160m%5u\e[0m ",
+    "\e[38;5;45m%s\e[0m",
+    "\e[38;5;166m",
+    "\e[0m"
+};
+
+static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg)
+{
+    printf(ocfg->fmt_lineno, lineno);
     /* pre-scan the line for a decrease in indent. */
     bool in_str = false;
     const unsigned char *ptr = line;
@@ -206,8 +229,10 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         int ch = *ptr++;
         if (in_str) {
             putchar(ch);
-            if (ch == '"')
+            if (ch == '"') {
                 in_str = false;
+                fputs(ocfg->str_suffix, stdout);
+            }
         }
         else if (ch & 0x80) {
             const struct token *t = high_tokens + (ch & 0x7f);
@@ -224,7 +249,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 ptr += 3;
             }
             else
-                fputs(t->text, stdout);
+                printf(ocfg->fmt_token, t->text);
             did_space = need_space = false;
             if (flags & SPC_AFTER)
                 need_space = true;
@@ -237,6 +262,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
             if (ch == '"') {
                 in_str = true;
                 need_space = false;
+                fputs(ocfg->str_prefix, stdout);
             }
             else if (ch == ' ' || ch == ':') {
                 did_space = true;
@@ -272,13 +298,13 @@ static unsigned char *is_wilson(unsigned char *prog, unsigned char *file_end)
     return NULL;
 }
 
-static void wilson2txt(unsigned char *prog, unsigned char *prog_end)
+static void wilson2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg)
 {
     unsigned indent = 0;
     while (prog < prog_end) {
         unsigned lineno = (prog[1] << 8) | prog[2];
         unsigned len = prog[3];
-        indent = bas2txt(prog+4, len-4, lineno, indent);
+        indent = bas2txt(prog+4, len-4, lineno, indent, ocfg);
         prog += len;
     }
 }
@@ -296,13 +322,13 @@ static unsigned char *is_russell(unsigned char *prog, unsigned char *file_end)
     return NULL;
 }
 
-static void russell2txt(unsigned char *prog, unsigned char *prog_end)
+static void russell2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg)
 {
     unsigned indent = 0;
     while (prog < prog_end) {
         unsigned len = prog[0];
         unsigned lineno = prog[1] | (prog[2] << 8);
-        indent = bas2txt(prog + 3, len - 4, lineno, indent);
+        indent = bas2txt(prog + 3, len - 4, lineno, indent, ocfg);
         prog += len;
     }
 }
@@ -310,6 +336,12 @@ static void russell2txt(unsigned char *prog, unsigned char *prog_end)
 int main(int argc, char **argv)
 {
     int status = 0;
+    const struct outcfg *ocfg = &cfg_plain;
+    if (argc > 1 && !strcmp(argv[1], "-c")) {
+        ocfg = &cfg_colour;
+        ++argv;
+        --argc;
+    }
     if (--argc) {
         do {
             const char *fn = *++argv;
@@ -332,9 +364,9 @@ int main(int argc, char **argv)
                             if (fread(prog, size, 1, fp) == 1) {
                                 unsigned char *prog_end, *file_end = prog + size;
                                 if ((prog_end = is_wilson(prog, file_end)))
-                                    wilson2txt(prog, prog_end);
+                                    wilson2txt(prog, prog_end, ocfg);
                                 else if ((prog_end = is_russell(prog, file_end)))
-                                    russell2txt(prog, prog_end);
+                                    russell2txt(prog, prog_end, ocfg);
                                 else {
                                     fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", fn);
                                     status = 3;
