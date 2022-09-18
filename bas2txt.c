@@ -195,6 +195,15 @@ static const struct outcfg cfg_colour =
     "\e[0m"
 };
 
+static const struct outcfg cfg_dark =
+{
+    "\e[38;5;124m%5u\e[0m ",
+    "\e[38;5;20m%s\e[0m",
+    "\e[38;5;94m",
+    "\e[38;5;128m%s",
+    "\e[0m"
+};
+
 static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg)
 {
     printf(ocfg->fmt_lineno, lineno);
@@ -342,10 +351,18 @@ int main(int argc, char **argv)
 {
     int status = 0;
     const struct outcfg *ocfg = &cfg_plain;
-    if (argc > 1 && !strcmp(argv[1], "-c")) {
-        ocfg = &cfg_colour;
-        ++argv;
-        --argc;
+    if (argc > 1) {
+        const char *opt = argv[1];
+        if (!strcmp(opt, "-c")) {
+            ocfg = &cfg_colour;
+            ++argv;
+            --argc;
+        }
+        else if (!strcmp(opt, "-d")) {
+            ocfg = &cfg_dark;
+            ++argv;
+            --argc;
+        }
     }
     if (--argc) {
         do {
