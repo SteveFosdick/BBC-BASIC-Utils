@@ -173,7 +173,8 @@ struct outcfg {
     const char *fmt_lineno;
     const char *fmt_token;
     const char *str_prefix;
-    const char *str_suffix;
+    const char *fmt_skipeol;
+    const char *gen_suffix;
 };
 
 static const struct outcfg cfg_plain =
@@ -181,6 +182,7 @@ static const struct outcfg cfg_plain =
     "%5u ",
     "%s",
     "",
+    "%s",
     ""
 };
 
@@ -189,6 +191,7 @@ static const struct outcfg cfg_colour =
     "\e[38;5;160m%5u\e[0m ",
     "\e[38;5;45m%s\e[0m",
     "\e[38;5;166m",
+    "\e[38;5;128m%s",
     "\e[0m"
 };
 
@@ -231,7 +234,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
             putchar(ch);
             if (ch == '"') {
                 in_str = false;
-                fputs(ocfg->str_suffix, stdout);
+                fputs(ocfg->gen_suffix, stdout);
             }
         }
         else if (ch & 0x80) {
@@ -248,15 +251,17 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 printf("%u", (msb << 8) | lsb);
                 ptr += 3;
             }
+            else if (flags & SKIP_EOL) {
+                printf(ocfg->fmt_skipeol, t->text);
+                fwrite(ptr, end-ptr, 1, stdout);
+                fputs(ocfg->gen_suffix, stdout);
+                break;
+            }
             else
                 printf(ocfg->fmt_token, t->text);
             did_space = need_space = false;
             if (flags & SPC_AFTER)
                 need_space = true;
-            if (flags & SKIP_EOL) {
-                fwrite(ptr, end-ptr, 1, stdout);
-                break;
-            }
         }
         else {
             if (ch == '"') {
