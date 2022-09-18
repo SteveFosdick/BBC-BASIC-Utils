@@ -358,16 +358,130 @@ static void russell2txt(unsigned char *prog, unsigned char *prog_end, const stru
     }
 }
 
-static const char usage[] = "Usage: bas2txt [-c] [-d] [-h] <file> [ ... ]\n";
+static unsigned char *load_file(const char *fn, unsigned char **end)
+{
+    FILE *fp = fopen(fn, "rb");
+    if (fp) {
+        if (!fseek(fp, 0L, SEEK_END)) {
+            long size = ftell(fp);
+            if (size == 0)
+                fprintf(stderr, "bas2txt: %s is an empty file\n", fn);
+            else {
+                unsigned char *data = malloc(size);
+                if (data) {
+                    rewind(fp);
+                    if (fread(data, size, 1, fp) == 1) {
+                        fclose(fp);
+                        *end = data + size;
+                        return data;
+                    }
+                    else
+                        fprintf(stderr, "bas2txt: read error on %s: %s", fn, strerror(errno));
+                }
+                else
+                    fprintf(stderr, "bas2txt: out of memory reading %s\n", fn);
+            }
+        }
+        else
+            fprintf(stderr, "bas2txt: seek error on %s: %s", fn, strerror(errno));
+        fclose(fp);
+    }
+    else
+        fprintf(stderr, "bas2txt: unable to open '%s' for reading: %s", fn, strerror(errno));
+    return NULL;
+}
+
+static void template(const char *fn, unsigned char *tmpl, unsigned char *tmpl_end, unsigned char *prog, unsigned char *prog_end,
+                     const struct outcfg *ocfg, void (*func)(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg))
+{
+    unsigned char *ptr = tmpl;
+    while (ptr < tmpl_end) {
+        int ch = *ptr++;
+        if (ch == '%') {
+            fwrite(tmpl, ptr-tmpl-1, 1, stdout);
+            ch = *ptr++;
+            if (ch == 'f')
+                fputs(fn, stdout);
+            else if (ch == 'p')
+                func(prog, prog_end, ocfg);
+            else
+                putchar(ch);
+            tmpl = ptr;
+        }
+    }
+    fwrite(tmpl, ptr-tmpl, 1, stdout);
+}
+
+static const char usage[]  = "Usage: bas2txt [-c] [-d] [-h] <file> [ ... ]\n";
+static const char notbas[] = "bas2txt: %s is not a BBC BASIC program or is corrupt\n";
+
+static int template_mode(int argc, char **argv, const struct outcfg *ocfg, const char *tmpl_name)
+{
+    int status = 0;
+    unsigned char *tmpl_end;
+    unsigned char *tmpl_file = load_file(tmpl_name, &tmpl_end);
+    if (tmpl_file) {
+        while (argc--) {
+            const char *fn = *argv++;
+            unsigned char *file_end;
+            unsigned char *file = load_file(fn, &file_end);
+            if (file) {
+                unsigned char *prog_end;
+                if ((prog_end = is_wilson(file, file_end)))
+                    template(fn, tmpl_file, tmpl_end, file, prog_end, ocfg, wilson2txt);
+                else if ((prog_end = is_russell(file, file_end)))
+                    template(fn, tmpl_file, tmpl_end, file, prog_end, ocfg, russell2txt);
+                else {
+                    fprintf(stderr, notbas, fn);
+                    status = 3;
+                }
+            }
+            else
+                status = 3;
+        }
+    }
+    return status;
+}
+
+static int simple_mode(int argc, char **argv, const struct outcfg *ocfg)
+{
+    int status = 0;
+    while (argc--) {
+        const char *fn = *argv++;
+        unsigned char *file_end;
+        unsigned char *file = load_file(fn, &file_end);
+        if (file) {
+            unsigned char *prog_end;
+            if ((prog_end = is_wilson(file, file_end)))
+                wilson2txt(file, prog_end, ocfg);
+            else if ((prog_end = is_russell(file, file_end)))
+                russell2txt(file, prog_end, ocfg);
+            else {
+                fprintf(stderr, notbas, fn);
+                status = 3;
+            }
+        }
+        else
+            status = 3;
+    }
+    return status;
+}
+
 
 int main(int argc, char **argv)
 {
-    int status = 0;
     const struct outcfg *ocfg = &cfg_plain;
-    bool file_done = false;
+    bool tmpl_next = false;
+    const char *tmpl_name = NULL;
     while (--argc) {
         const char *arg = *++argv;
-        if (arg[0] == '-') {
+        if (tmpl_next) {
+            tmpl_name = arg;
+            tmpl_next = false;
+        }
+        else {
+            if (arg[0] != '-')
+                break;
             int opt = arg[1];
             switch(opt) {
                 case 'c':
@@ -379,6 +493,9 @@ int main(int argc, char **argv)
                 case 'h':
                     ocfg = &cfg_html;
                     break;
+                case 't':
+                    tmpl_next = true;
+                    break;
                 case 0:
                     fprintf(stderr, "bas2txt: missing option\n%s", usage);
                     return 1;
@@ -387,61 +504,13 @@ int main(int argc, char **argv)
                     return 1;
             }
         }
-        else {
-            file_done = true;
-            FILE *fp = fopen(arg, "rb");
-            if (fp) {
-                if (!fseek(fp, 0L, SEEK_END)) {
-                    long size = ftell(fp);
-                    if (size == 0) {
-                        fprintf(stderr, "bas2txt: %s is an empty file\n", arg);
-                        status = 3;
-                    }
-                    else if (size > 0x400000) { // 4Mb
-                        fprintf(stderr, "bas2txt: %s is too big to be BBC BASIC\n", arg);
-                        status = 3;
-                    }
-                    else {
-                        unsigned char *prog = malloc(size);
-                        if (prog) {
-                            rewind(fp);
-                            if (fread(prog, size, 1, fp) == 1) {
-                                unsigned char *prog_end, *file_end = prog + size;
-                                if ((prog_end = is_wilson(prog, file_end)))
-                                    wilson2txt(prog, prog_end, ocfg);
-                                else if ((prog_end = is_russell(prog, file_end)))
-                                    russell2txt(prog, prog_end, ocfg);
-                                else {
-                                    fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", arg);
-                                    status = 3;
-                                }
-                            }
-                            else {
-                                fprintf(stderr, "bas2txt: read error on %s: %s", arg, strerror(errno));
-                                status = 2;
-                            }
-                        }
-                        else {
-                            fprintf(stderr, "bas2txt: out of memory reading %s\n", arg);
-                            status = 4;
-                        }
-                    }
-                }
-                else {
-                    fprintf(stderr, "bas2txt: seek error on %s: %s", arg, strerror(errno));
-                    status = 2;
-                }
-                fclose(fp);
-            }
-            else {
-                fprintf(stderr, "bas2txt: unable to open '%s': %s", arg, strerror(errno));
-                status = 2;
-            }
-        }
     }
-    if (!file_done) {
+    if (argc == 0) {
         fputs(usage, stderr);
         return 1;
     }
-    return status;
+    if (tmpl_name)
+        return template_mode(argc, argv, ocfg, tmpl_name);
+    else
+        return simple_mode(argc, argv, ocfg);
 }
