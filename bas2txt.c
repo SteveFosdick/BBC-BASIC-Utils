@@ -194,8 +194,7 @@ static const struct outcfg cfg_colour =
     "\e[38;5;45m%s\e[0m",
     "\e[38;5;166m",
     "\e[38;5;128m%s",
-    "\e[0m",
-    "\n"
+    "\e[0m"
 };
 
 static const struct outcfg cfg_dark =
@@ -204,8 +203,7 @@ static const struct outcfg cfg_dark =
     "\e[38;5;20m%s\e[0m",
     "\e[38;5;94m",
     "\e[38;5;128m%s",
-    "\e[0m",
-    "\n"
+    "\e[0m"
 };
 
 static const struct outcfg cfg_html =
@@ -214,8 +212,7 @@ static const struct outcfg cfg_html =
     "<span class=\"token\">%s</span>",
     "<span class=\"string\">",
     "<span class=\"skipeol\">%s</span>",
-    "</span>",
-    "<br>\n"
+    "</span>"
 };
 
 static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg)
@@ -309,7 +306,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 putchar(ch);
         }
     }
-    fputs(ocfg->eol, stdout);
+    putchar('\n');
     return indent;
 }
 
