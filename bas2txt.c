@@ -175,6 +175,7 @@ struct outcfg {
     const char *str_prefix;
     const char *fmt_skipeol;
     const char *gen_suffix;
+    const char *eol;
 };
 
 static const struct outcfg cfg_plain =
@@ -183,7 +184,8 @@ static const struct outcfg cfg_plain =
     "%s",
     "",
     "%s",
-    ""
+    "",
+    "\n"
 };
 
 static const struct outcfg cfg_colour =
@@ -192,7 +194,8 @@ static const struct outcfg cfg_colour =
     "\e[38;5;45m%s\e[0m",
     "\e[38;5;166m",
     "\e[38;5;128m%s",
-    "\e[0m"
+    "\e[0m",
+    "\n"
 };
 
 static const struct outcfg cfg_dark =
@@ -201,7 +204,18 @@ static const struct outcfg cfg_dark =
     "\e[38;5;20m%s\e[0m",
     "\e[38;5;94m",
     "\e[38;5;128m%s",
-    "\e[0m"
+    "\e[0m",
+    "\n"
+};
+
+static const struct outcfg cfg_html =
+{
+    "<span class=\"lineno\">%5u</span> ",
+    "<span class=\"token\">%s</span>",
+    "<span class=\"string\">",
+    "<span class=\"skipeol\">%s</span>",
+    "</span>",
+    "<br>\n"
 };
 
 static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg)
@@ -295,7 +309,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 putchar(ch);
         }
     }
-    putchar('\n');
+    fputs(ocfg->eol, stdout);
     return indent;
 }
 
@@ -347,36 +361,47 @@ static void russell2txt(unsigned char *prog, unsigned char *prog_end, const stru
     }
 }
 
+static const char usage[] = "Usage: bas2txt [-c] [-d] [-h] <file> [ ... ]\n";
+
 int main(int argc, char **argv)
 {
     int status = 0;
     const struct outcfg *ocfg = &cfg_plain;
-    if (argc > 1) {
-        const char *opt = argv[1];
-        if (!strcmp(opt, "-c")) {
-            ocfg = &cfg_colour;
-            ++argv;
-            --argc;
+    bool file_done = false;
+    while (--argc) {
+        const char *arg = *++argv;
+        if (arg[0] == '-') {
+            int opt = arg[1];
+            switch(opt) {
+                case 'c':
+                    ocfg = &cfg_colour;
+                    break;
+                case 'd':
+                    ocfg = &cfg_dark;
+                    break;
+                case 'h':
+                    ocfg = &cfg_html;
+                    break;
+                case 0:
+                    fprintf(stderr, "bas2txt: missing option\n%s", usage);
+                    return 1;
+                default:
+                    fprintf(stderr, "bas2txt: unrecognised option '%c'\n%s", opt, usage);
+                    return 1;
+            }
         }
-        else if (!strcmp(opt, "-d")) {
-            ocfg = &cfg_dark;
-            ++argv;
-            --argc;
-        }
-    }
-    if (--argc) {
-        do {
-            const char *fn = *++argv;
-            FILE *fp = fopen(fn, "rb");
+        else {
+            file_done = true;
+            FILE *fp = fopen(arg, "rb");
             if (fp) {
                 if (!fseek(fp, 0L, SEEK_END)) {
                     long size = ftell(fp);
                     if (size == 0) {
-                        fprintf(stderr, "bas2txt: %s is an empty file\n", fn);
+                        fprintf(stderr, "bas2txt: %s is an empty file\n", arg);
                         status = 3;
                     }
                     else if (size > 0x400000) { // 4Mb
-                        fprintf(stderr, "bas2txt: %s is too big to be BBC BASIC\n", fn);
+                        fprintf(stderr, "bas2txt: %s is too big to be BBC BASIC\n", arg);
                         status = 3;
                     }
                     else {
@@ -390,36 +415,36 @@ int main(int argc, char **argv)
                                 else if ((prog_end = is_russell(prog, file_end)))
                                     russell2txt(prog, prog_end, ocfg);
                                 else {
-                                    fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", fn);
+                                    fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", arg);
                                     status = 3;
                                 }
                             }
                             else {
-                                fprintf(stderr, "bas2txt: read error on %s: %s", fn, strerror(errno));
+                                fprintf(stderr, "bas2txt: read error on %s: %s", arg, strerror(errno));
                                 status = 2;
                             }
                         }
                         else {
-                            fprintf(stderr, "bas2txt: out of memory reading %s\n", fn);
+                            fprintf(stderr, "bas2txt: out of memory reading %s\n", arg);
                             status = 4;
                         }
                     }
                 }
                 else {
-                    fprintf(stderr, "bas2txt: seek error on %s: %s", fn, strerror(errno));
+                    fprintf(stderr, "bas2txt: seek error on %s: %s", arg, strerror(errno));
                     status = 2;
                 }
                 fclose(fp);
             }
             else {
-                fprintf(stderr, "bas2txt: unable to open '%s': %s", fn, strerror(errno));
+                fprintf(stderr, "bas2txt: unable to open '%s': %s", arg, strerror(errno));
                 status = 2;
             }
-        } while (--argc);
+        }
     }
-    else {
-        fputs("Usage: bas2txt <file> [ ... ]\n", stderr);
-        status = 1;
+    if (!file_done) {
+        fputs(usage, stderr);
+        return 1;
     }
     return status;
 }
