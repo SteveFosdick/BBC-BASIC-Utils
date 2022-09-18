@@ -211,7 +211,7 @@ static const struct outcfg cfg_html =
     "<span class=\"lineno\">%5u</span> ",
     "<span class=\"token\">%s</span>",
     "<span class=\"string\">",
-    "<span class=\"skipeol\">%s</span>",
+    "<span class=\"skipeol\">%s",
     "</span>"
 };
 
