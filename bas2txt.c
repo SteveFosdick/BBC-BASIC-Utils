@@ -413,60 +413,6 @@ static void template(const char *fn, unsigned char *tmpl, unsigned char *tmpl_en
 }
 
 static const char usage[]  = "Usage: bas2txt [-c] [-d] [-h] <file> [ ... ]\n";
-static const char notbas[] = "bas2txt: %s is not a BBC BASIC program or is corrupt\n";
-
-static int template_mode(int argc, char **argv, const struct outcfg *ocfg, const char *tmpl_name)
-{
-    int status = 0;
-    unsigned char *tmpl_end;
-    unsigned char *tmpl_file = load_file(tmpl_name, &tmpl_end);
-    if (tmpl_file) {
-        while (argc--) {
-            const char *fn = *argv++;
-            unsigned char *file_end;
-            unsigned char *file = load_file(fn, &file_end);
-            if (file) {
-                unsigned char *prog_end;
-                if ((prog_end = is_wilson(file, file_end)))
-                    template(fn, tmpl_file, tmpl_end, file, prog_end, ocfg, wilson2txt);
-                else if ((prog_end = is_russell(file, file_end)))
-                    template(fn, tmpl_file, tmpl_end, file, prog_end, ocfg, russell2txt);
-                else {
-                    fprintf(stderr, notbas, fn);
-                    status = 3;
-                }
-            }
-            else
-                status = 3;
-        }
-    }
-    return status;
-}
-
-static int simple_mode(int argc, char **argv, const struct outcfg *ocfg)
-{
-    int status = 0;
-    while (argc--) {
-        const char *fn = *argv++;
-        unsigned char *file_end;
-        unsigned char *file = load_file(fn, &file_end);
-        if (file) {
-            unsigned char *prog_end;
-            if ((prog_end = is_wilson(file, file_end)))
-                wilson2txt(file, prog_end, ocfg);
-            else if ((prog_end = is_russell(file, file_end)))
-                russell2txt(file, prog_end, ocfg);
-            else {
-                fprintf(stderr, notbas, fn);
-                status = 3;
-            }
-        }
-        else
-            status = 3;
-    }
-    return status;
-}
-
 
 int main(int argc, char **argv)
 {
@@ -509,8 +455,34 @@ int main(int argc, char **argv)
         fputs(usage, stderr);
         return 1;
     }
-    if (tmpl_name)
-        return template_mode(argc, argv, ocfg, tmpl_name);
-    else
-        return simple_mode(argc, argv, ocfg);
+    unsigned char *tmpl_data, *tmpl_end;
+    if (tmpl_name) {
+        if (!(tmpl_data = load_file(tmpl_name, &tmpl_end)))
+            return 2;
+    }
+    else {
+        tmpl_data = (unsigned char *)"%p";
+        tmpl_end = tmpl_data + 2;
+    }
+    int status = 0;
+    while (argc--) {
+        const char *fn = *argv++;
+        unsigned char *file_end;
+        unsigned char *file = load_file(fn, &file_end);
+        if (file) {
+            unsigned char *prog_end;
+            if ((prog_end = is_wilson(file, file_end)))
+                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, wilson2txt);
+            else if ((prog_end = is_russell(file, file_end)))
+                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, russell2txt);
+            else {
+                fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", fn);
+                status = 3;
+            }
+            free(file);
+        }
+        else
+            status = 2;
+    }
+    return status;
 }
