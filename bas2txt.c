@@ -234,19 +234,21 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
             }
         }
         else {
+            if (ch == '"') {
+                in_str = true;
+                need_space = false;
+            }
+            else if (ch == ' ' || ch == ':') {
+                did_space = true;
+                need_space = false;
+            }
+            else
+                did_space = false;
             if (need_space && !did_space) {
                 need_space = false;
                 did_space = true;
                 putchar(' ');
             }
-            if (ch == '"')
-                in_str = true;
-            else if (ch == ' ' || ch == ':') {
-                need_space = false;
-                did_space = true;
-            }
-            else
-                did_space = false;
             if (ch >= 0x01 && ch <= 0x08)
                 fputs(low_tokens[ch-1], stdout);
             else
