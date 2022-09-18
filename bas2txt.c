@@ -14,6 +14,7 @@ struct token {
 #define SPC_AFTER  0x02
 #define INC_INDENT 0x04
 #define DEC_INDENT 0x08
+#define SKIP_EOL   0x10
 
 static const char low_tokens[8][9] = {
     "Missing",
@@ -130,7 +131,7 @@ static const struct token high_tokens[] = {
     { "CLOSE",    SPC_AFTER            }, // D9
     { "CLG",      SPC_AFTER            }, // DA
     { "CLS",      SPC_AFTER            }, // DB
-    { "DATA",     SPC_AFTER            }, // DC
+    { "DATA",     SPC_AFTER|SKIP_EOL   }, // DC
     { "DEF",      SPC_AFTER            }, // DD
     { "DIM",      SPC_AFTER            }, // DE
     { "DRAW",     SPC_AFTER            }, // DF
@@ -154,7 +155,7 @@ static const struct token high_tokens[] = {
     { "PRINT",    SPC_AFTER            }, // F1
     { "PROC",     0                    }, // F2
     { "READ",     SPC_AFTER            }, // F3
-    { "REM",      SPC_AFTER            }, // F4
+    { "REM",      SPC_AFTER|SKIP_EOL   }, // F4
     { "REPEAT",   SPC_AFTER|INC_INDENT }, // F5
     { "REPORT",   SPC_AFTER            }, // F6
     { "RESTORE",  SPC_AFTER            }, // F7
@@ -182,8 +183,12 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
                 in_str = false;
         }
         else if (ch & 0x80) {
-            if (high_tokens[ch & 0x7f].flags & DEC_INDENT && indent > 0)
+            const struct token *t = high_tokens + (ch & 0x7f);
+            unsigned flags = t->flags;
+            if (flags & DEC_INDENT && indent > 0)
                 --indent;
+            if (flags & SKIP_EOL)
+                break;
         }
         else if (ch == '"')
             in_str = true;
@@ -223,6 +228,10 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
             did_space = need_space = false;
             if (flags & SPC_AFTER)
                 need_space = true;
+            if (flags & SKIP_EOL) {
+                fwrite(ptr, end-ptr, 1, stdout);
+                break;
+            }
         }
         else {
             if (need_space && !did_space) {
