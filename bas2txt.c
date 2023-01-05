@@ -219,6 +219,7 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
 {
     printf(ocfg->fmt_lineno, lineno);
     /* pre-scan the line for a decrease in indent. */
+    int new_indent = indent;
     bool in_str = false;
     const unsigned char *ptr = line;
     const unsigned char *end = line + len;
@@ -231,14 +232,19 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         else if (ch & 0x80) {
             const struct token *t = high_tokens + (ch & 0x7f);
             unsigned flags = t->flags;
-            if (flags & DEC_INDENT && indent > 0)
-                --indent;
+            if (flags & DEC_INDENT)
+                --new_indent;
+            if (flags & INC_INDENT)
+                ++new_indent;
             if (flags & SKIP_EOL)
                 break;
         }
         else if (ch == '"')
             in_str = true;
     }
+    /* a decrease in indent if applied immediately */
+    if (new_indent < indent && new_indent >= 0)
+        indent = new_indent;
     for (int i = indent; i; --i) {
         putchar(' ');
         putchar(' ');
@@ -260,8 +266,6 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         else if (ch & 0x80) {
             const struct token *t = high_tokens + (ch & 0x7f);
             unsigned flags = t->flags;
-            if (flags & INC_INDENT)
-                ++indent;
             if (!did_space && (need_space || (flags & SPC_BEFORE)))
                 putchar(' ');
             if (ch == 0x8d) {
@@ -307,6 +311,9 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         }
     }
     putchar('\n');
+    /* an increase in indent is applied afterwards ready for the next line */
+    if (new_indent > indent)
+        indent = new_indent;
     return indent;
 }
 
