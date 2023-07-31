@@ -142,6 +142,8 @@ static const struct token tokens[] = {
     { "WIDTH",    0xfe, TOK_MID                     }
 };
 
+static unsigned char endmark[2] = { 0x0d, 0xff };
+
 static inline bool is_space(int ch)
 {
     return (ch == ' ' || ch == '\t' || ch == '\r');
@@ -177,11 +179,11 @@ static inline bool is_alnum(int ch)
     return is_digit(ch) || is_alpha(ch);
 }
 
-static int txt2bas(const char *fn, FILE *fp)
+static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
 {
     char txtline[256], basline[256];
     basline[0] = 0x0d;
-    while (fgets(txtline, sizeof(txtline), fp)) {
+    while (fgets(txtline, sizeof(txtline), in_fp)) {
         const char *txtptr = txtline;
         char *basptr = basline + 4;
         int ch = *txtptr++;
@@ -339,38 +341,51 @@ static int txt2bas(const char *fn, FILE *fp)
             }
             size_t len = basptr - basline;
             basline[3] = len;
-            fwrite(basline, len, 1, stdout);
-            fflush(stdout);
+            fwrite(basline, len, 1, out_fp);
         }
         else {
             fputs("missing line number\n", stderr);
             return 1;
         }
     }
-    basline[1] = 0xff;
-    fwrite(basline, 2, 1, stdout);
     return 0;
 }
 
 int main(int argc, char **argv)
 {
     int status = 0;
-    if (--argc) {
-        do {
-            const char *fn = *++argv;
-            FILE *fp = fopen(fn, "r");
-            if (fp) {
-                if (txt2bas(fn, fp))
-                    status = 1;
-                fclose(fp);
-            }
-            else {
-                fprintf(stderr, "txt2bas: unable to open '%s': %s", fn, strerror(errno));
-                status = 1;
-            }
-        } while (--argc);
+    if (argc == 1) {
+        fputs("Usage: txt2bas [ <text-in> ... ] <bas-out>\n", stderr);
+        status = 1;
     }
-    else
-        status = txt2bas("stdin", stdin);
+    else {
+        const char *out_fn = argv[--argc];
+        FILE *out_fp = fopen(out_fn, "wb");
+        if (out_fp) {
+            if (--argc) {
+                do {
+                    const char *in_fn = *++argv;
+                    FILE *in_fp = fopen(in_fn, "r");
+                    if (in_fp) {
+                        if (txt2bas(in_fn, in_fp, out_fp))
+                            status = 1;
+                        fclose(in_fp);
+                    }
+                    else {
+                        fprintf(stderr, "txt2bas: unable to open '%s': %s", in_fn, strerror(errno));
+                        status = 1;
+                    }
+                } while (--argc);
+            }
+            else
+                status = txt2bas("stdin", stdin, out_fp);
+            fwrite(endmark, 2, 1, out_fp);
+            fclose(out_fp);
+        }
+        else {
+            fprintf(stderr, "txt2bas: unable to open output file '%s': %s\n", out_fn, strerror(errno));
+            status = 2;
+        }
+    }
     return status;
 }
