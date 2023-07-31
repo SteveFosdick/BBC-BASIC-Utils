@@ -143,6 +143,7 @@ static const struct token tokens[] = {
 };
 
 static unsigned char endmark[2] = { 0x0d, 0xff };
+static unsigned lineno = 0;
 
 static inline bool is_space(int ch)
 {
@@ -190,163 +191,162 @@ static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
         while (is_space(ch))
             ch = *txtptr++;
         if (is_digit(ch)) {
-            unsigned lineno = 0;
+            unsigned value = 0;
             do {
                 lineno = lineno * 10 + ch - '0';
                 ch = *txtptr++;
             } while (is_digit(ch));
-            basline[1] = (lineno >> 8);
-            basline[2] = lineno;
-            bool start = true;
-            bool toklno = false;
-            while (ch && ch != '\n') {
-                if (is_space(ch))
-                    ch = *txtptr++;
-                else if (ch == '&') {
-                    do {
-                        *basptr++ = ch;
-                        ch = *txtptr++;
-                    } while (is_xdigit(ch));
-                }
-                else if (ch == '"') {
-                    do {
-                        *basptr++ = ch;
-                        ch = *txtptr++;
-                    } while (ch && ch != '"');
+            lineno = value;
+        }
+        else
+            ++lineno;
+        basline[1] = (lineno >> 8);
+        basline[2] = lineno;
+        bool start = true;
+        bool toklno = false;
+        while (ch && ch != '\n') {
+            if (is_space(ch))
+                ch = *txtptr++;
+            else if (ch == '&') {
+                do {
                     *basptr++ = ch;
                     ch = *txtptr++;
-                }
-                else if (ch == ':') {
+                } while (is_xdigit(ch));
+            }
+            else if (ch == '"') {
+                do {
                     *basptr++ = ch;
                     ch = *txtptr++;
-                    start = true;
-                    toklno = true;
-                }
-                else if (ch == ',') {
-                    *basptr++ = ch;
-                    ch = *txtptr++;
-                }
-                else if (ch == '*') {
-                    if (start) {
-                        do {
-                            *basptr++ = ch;
-                            ch = *txtptr++;
-                        } while (ch && ch != '\r' && ch != '\n');
-                    }
-                    else {
-                        *basptr++ = ch;
-                        ch = *txtptr++;
-                    }
-                }
-                else if (is_digit(ch)) {
-                    if (toklno) {
-                        lineno = 0;
-                        do {
-                            lineno = lineno * 10 + ch - '0';
-                            ch = *txtptr++;
-                        } while (is_digit(ch));
-                        *basptr++ = 0x8d;
-                        *basptr++ = (((lineno & 0xc0) ^ 0x40) >> 2) | (((lineno & 0xc000) ^ 0x4000) >> 12) | 0x40;
-                        *basptr++ = (lineno & 0x3f) | 0x40;
-                        *basptr++ = ((lineno >> 8) & 0x3f) | 0x40;
-                        toklno = false;
-                        start = false;
-                    }
-                    else {
-                        do {
-                            *basptr++ = ch;
-                            ch = *txtptr++;
-                        } while (is_digit(ch) || ch == '.' || ch == 'E' || ch == 'e');
-                    }
-                }
-                else if (ch == '.') {
+                } while (ch && ch != '"');
+                *basptr++ = ch;
+                ch = *txtptr++;
+            }
+            else if (ch == ':') {
+                *basptr++ = ch;
+                ch = *txtptr++;
+                start = true;
+                toklno = true;
+            }
+            else if (ch == ',') {
+                *basptr++ = ch;
+                ch = *txtptr++;
+            }
+            else if (ch == '*') {
+                if (start) {
                     do {
                         *basptr++ = ch;
                         ch = *txtptr++;
-                    } while (is_digit(ch) || ch == 'E' || ch == 'e');
-                }
-                else if (is_lower(ch) || (ch >= 'X' && ch <= 'Z')) {
-                    do {
-                        *basptr++ = ch;
-                        ch = *txtptr++;
-                    } while (is_upper(ch) || is_lower(ch) || ch == '%' || ch == '$');
-                }
-                else if (ch >= 'A' && ch <= 'W') {
-                    const struct token *ptr = tokens;
-                    const struct token *end = tokens + sizeof(tokens)/sizeof(struct token);
-                    bool found = false;
-                    while (ptr < end) {
-                        int tok_ch = ptr->text[0];
-                        if (ch < tok_ch)
-                            break;
-                        int ix = 0;
-                        int txt_ch = ch;
-                        while (txt_ch == tok_ch) {
-                            txt_ch = txtptr[ix++];
-                            tok_ch = ptr->text[ix];
-                        }
-                        if (txt_ch == '.') {
-                            txtptr += ix;
-                            found = true;
-                            break;
-                        }
-                        if (!tok_ch && (!(ptr->flags & TOK_COND) || !is_alnum(txt_ch))) {
-                            txtptr += ix - 1;
-                            found = true;
-                            break;
-                        }
-                        ptr++;
-                    }
-                    if (found) {
-                        unsigned token = ptr->token;
-                        unsigned flags = ptr->flags;
-                        if (flags & TOK_PSEUDO)
-                            token += 0x40;
-                        *basptr++ = token;
-                        if (flags & TOK_MID) {
-                            start = false;
-                            toklno = false;
-                        }
-                        if (flags & TOK_START) {
-                            start = true;
-                            toklno = false;
-                        }
-                        ch = *txtptr++;
-                        if (flags & TOK_FNPROC) {
-                            while (is_alpha(ch)) {
-                                *basptr++ = ch;
-                                ch = *txtptr++;
-                            }
-                        }
-                        if (flags & TOK_LINENO)
-                            toklno = true;
-                        if (flags & TOK_REM) {
-                            do {
-                                *basptr++ = ch;
-                                ch = *txtptr++;
-                            } while (ch && ch != '\r' && ch != '\n');
-                        }
-                    }
-                    else {
-                        do {
-                            *basptr++ = ch;
-                            ch = *txtptr++;
-                        } while (is_upper(ch) || is_lower(ch) || ch == '%' || ch == '$');
-                    }
+                    } while (ch && ch != '\r' && ch != '\n');
                 }
                 else {
                     *basptr++ = ch;
                     ch = *txtptr++;
                 }
             }
-            size_t len = basptr - basline;
-            basline[3] = len;
-            fwrite(basline, len, 1, out_fp);
+            else if (is_digit(ch)) {
+                if (toklno) {
+                    lineno = 0;
+                    do {
+                        lineno = lineno * 10 + ch - '0';
+                        ch = *txtptr++;
+                    } while (is_digit(ch));
+                    *basptr++ = 0x8d;
+                    *basptr++ = (((lineno & 0xc0) ^ 0x40) >> 2) | (((lineno & 0xc000) ^ 0x4000) >> 12) | 0x40;
+                    *basptr++ = (lineno & 0x3f) | 0x40;
+                    *basptr++ = ((lineno >> 8) & 0x3f) | 0x40;
+                    toklno = false;
+                    start = false;
+                }
+                else {
+                    do {
+                        *basptr++ = ch;
+                        ch = *txtptr++;
+                    } while (is_digit(ch) || ch == '.' || ch == 'E' || ch == 'e');
+                }
+            }
+            else if (ch == '.') {
+                do {
+                    *basptr++ = ch;
+                    ch = *txtptr++;
+                } while (is_digit(ch) || ch == 'E' || ch == 'e');
+            }
+            else if (is_lower(ch) || (ch >= 'X' && ch <= 'Z')) {
+                do {
+                    *basptr++ = ch;
+                    ch = *txtptr++;
+                } while (is_upper(ch) || is_lower(ch) || ch == '%' || ch == '$');
+            }
+            else if (ch >= 'A' && ch <= 'W') {
+                const struct token *ptr = tokens;
+                const struct token *end = tokens + sizeof(tokens)/sizeof(struct token);
+                bool found = false;
+                while (ptr < end) {
+                    int tok_ch = ptr->text[0];
+                    if (ch < tok_ch)
+                        break;
+                    int ix = 0;
+                    int txt_ch = ch;
+                    while (txt_ch == tok_ch) {
+                        txt_ch = txtptr[ix++];
+                        tok_ch = ptr->text[ix];
+                    }
+                    if (txt_ch == '.') {
+                        txtptr += ix;
+                        found = true;
+                        break;
+                    }
+                    if (!tok_ch && (!(ptr->flags & TOK_COND) || !is_alnum(txt_ch))) {
+                        txtptr += ix - 1;
+                        found = true;
+                        break;
+                    }
+                    ptr++;
+                }
+                if (found) {
+                    unsigned token = ptr->token;
+                    unsigned flags = ptr->flags;
+                    if (flags & TOK_PSEUDO)
+                        token += 0x40;
+                    *basptr++ = token;
+                    if (flags & TOK_MID) {
+                        start = false;
+                        toklno = false;
+                    }
+                    if (flags & TOK_START) {
+                        start = true;
+                        toklno = false;
+                    }
+                    ch = *txtptr++;
+                    if (flags & TOK_FNPROC) {
+                        while (is_alpha(ch)) {
+                            *basptr++ = ch;
+                            ch = *txtptr++;
+                        }
+                    }
+                    if (flags & TOK_LINENO)
+                        toklno = true;
+                    if (flags & TOK_REM) {
+                        do {
+                            *basptr++ = ch;
+                            ch = *txtptr++;
+                        } while (ch && ch != '\r' && ch != '\n');
+                    }
+                }
+                else {
+                    do {
+                        *basptr++ = ch;
+                        ch = *txtptr++;
+                    } while (is_upper(ch) || is_lower(ch) || ch == '%' || ch == '$');
+                }
+            }
+            else {
+                *basptr++ = ch;
+                ch = *txtptr++;
+            }
         }
-        else {
-            fputs("missing line number\n", stderr);
-            return 1;
-        }
+        size_t len = basptr - basline;
+        basline[3] = len;
+        fwrite(basline, len, 1, out_fp);
     }
     return 0;
 }
