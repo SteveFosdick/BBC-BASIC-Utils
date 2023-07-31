@@ -180,7 +180,7 @@ struct outcfg {
 
 static const struct outcfg cfg_plain =
 {
-    "%5u ",
+    "%5u",
     "%s",
     "",
     "%s",
@@ -190,7 +190,7 @@ static const struct outcfg cfg_plain =
 
 static const struct outcfg cfg_colour =
 {
-    "\e[38;5;160m%5u\e[0m ",
+    "\e[38;5;160m%5u\e[0m",
     "\e[38;5;45m%s\e[0m",
     "\e[38;5;166m",
     "\e[38;5;128m%s",
@@ -199,7 +199,7 @@ static const struct outcfg cfg_colour =
 
 static const struct outcfg cfg_dark =
 {
-    "\e[38;5;124m%5u\e[0m ",
+    "\e[38;5;124m%5u\e[0m",
     "\e[38;5;20m%s\e[0m",
     "\e[38;5;94m",
     "\e[38;5;128m%s",
@@ -215,7 +215,7 @@ static const struct outcfg cfg_html =
     "</span>"
 };
 
-static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg)
+static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno, unsigned indent, const struct outcfg *ocfg, bool doindent)
 {
     printf(ocfg->fmt_lineno, lineno);
     /* pre-scan the line for a decrease in indent. */
@@ -223,31 +223,34 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
     bool in_str = false;
     const unsigned char *ptr = line;
     const unsigned char *end = line + len;
-    while (ptr < end) {
-        int ch = *ptr++;
-        if (in_str) {
-            if (ch == '"')
-                in_str = false;
-        }
-        else if (ch & 0x80) {
-            const struct token *t = high_tokens + (ch & 0x7f);
-            unsigned flags = t->flags;
-            if (flags & DEC_INDENT)
-                --new_indent;
-            if (flags & INC_INDENT)
-                ++new_indent;
-            if (flags & SKIP_EOL)
-                break;
-        }
-        else if (ch == '"')
-            in_str = true;
-    }
-    /* a decrease in indent if applied immediately */
-    if (new_indent < indent && new_indent >= 0)
-        indent = new_indent;
-    for (int i = indent; i; --i) {
+    if (doindent) {
         putchar(' ');
-        putchar(' ');
+        while (ptr < end) {
+            int ch = *ptr++;
+            if (in_str) {
+                if (ch == '"')
+                    in_str = false;
+            }
+            else if (ch & 0x80) {
+                const struct token *t = high_tokens + (ch & 0x7f);
+                unsigned flags = t->flags;
+                if (flags & DEC_INDENT)
+                    --new_indent;
+                if (flags & INC_INDENT)
+                    ++new_indent;
+                if (flags & SKIP_EOL)
+                    break;
+            }
+            else if (ch == '"')
+                in_str = true;
+        }
+        /* a decrease in indent if applied immediately */
+        if (new_indent < indent && new_indent >= 0)
+            indent = new_indent;
+        for (int i = indent; i; --i) {
+            putchar(' ');
+            putchar(' ');
+        }
     }
     /* now print the line */
     bool did_space = true;
@@ -311,9 +314,11 @@ static unsigned bas2txt(const unsigned char *line, unsigned len, unsigned lineno
         }
     }
     putchar('\n');
-    /* an increase in indent is applied afterwards ready for the next line */
-    if (new_indent > indent)
-        indent = new_indent;
+    if (doindent) {
+        /* an increase in indent is applied afterwards ready for the next line */
+        if (new_indent > indent)
+            indent = new_indent;
+    }
     return indent;
 }
 
@@ -330,13 +335,13 @@ static unsigned char *is_wilson(unsigned char *prog, unsigned char *file_end)
     return NULL;
 }
 
-static void wilson2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg)
+static void wilson2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg, bool doindent)
 {
     unsigned indent = 0;
     while (prog < prog_end) {
         unsigned lineno = (prog[1] << 8) | prog[2];
         unsigned len = prog[3];
-        indent = bas2txt(prog+4, len-4, lineno, indent, ocfg);
+        indent = bas2txt(prog+4, len-4, lineno, indent, ocfg, doindent);
         prog += len;
     }
 }
@@ -354,13 +359,13 @@ static unsigned char *is_russell(unsigned char *prog, unsigned char *file_end)
     return NULL;
 }
 
-static void russell2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg)
+static void russell2txt(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg, bool doindent)
 {
     unsigned indent = 0;
     while (prog < prog_end) {
         unsigned len = prog[0];
         unsigned lineno = prog[1] | (prog[2] << 8);
-        indent = bas2txt(prog + 3, len - 4, lineno, indent, ocfg);
+        indent = bas2txt(prog + 3, len - 4, lineno, indent, ocfg, doindent);
         prog += len;
     }
 }
@@ -398,8 +403,8 @@ static unsigned char *load_file(const char *fn, unsigned char **end)
     return NULL;
 }
 
-static void template(const char *fn, unsigned char *tmpl, unsigned char *tmpl_end, unsigned char *prog, unsigned char *prog_end,
-                     const struct outcfg *ocfg, void (*func)(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg))
+static void template(const char *fn, unsigned char *tmpl, unsigned char *tmpl_end, unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg,
+                     bool doindent, void (*func)(unsigned char *prog, unsigned char *prog_end, const struct outcfg *ocfg, bool doindent))
 {
     unsigned char *ptr = tmpl;
     while (ptr < tmpl_end) {
@@ -410,7 +415,7 @@ static void template(const char *fn, unsigned char *tmpl, unsigned char *tmpl_en
             if (ch == 'f')
                 fputs(fn, stdout);
             else if (ch == 'p')
-                func(prog, prog_end, ocfg);
+                func(prog, prog_end, ocfg, doindent);
             else
                 putchar(ch);
             tmpl = ptr;
@@ -425,6 +430,7 @@ int main(int argc, char **argv)
 {
     const struct outcfg *ocfg = &cfg_plain;
     bool tmpl_next = false;
+    bool doindent = true;
     const char *tmpl_name = NULL;
     while (--argc) {
         const char *arg = *++argv;
@@ -448,6 +454,9 @@ int main(int argc, char **argv)
                     break;
                 case 't':
                     tmpl_next = true;
+                    break;
+                case 'n':
+                    doindent = false;
                     break;
                 case 0:
                     fprintf(stderr, "bas2txt: missing option\n%s", usage);
@@ -479,9 +488,9 @@ int main(int argc, char **argv)
         if (file) {
             unsigned char *prog_end;
             if ((prog_end = is_wilson(file, file_end)))
-                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, wilson2txt);
+                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, doindent, wilson2txt);
             else if ((prog_end = is_russell(file, file_end)))
-                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, russell2txt);
+                template(fn, tmpl_data, tmpl_end, file, prog_end, ocfg, doindent, russell2txt);
             else {
                 fprintf(stderr, "bas2txt: %s is not a BBC BASIC program or is corrupt\n", fn);
                 status = 3;
