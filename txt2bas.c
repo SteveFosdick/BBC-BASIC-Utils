@@ -305,7 +305,7 @@ static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
                 if (found) {
                     unsigned token = ptr->token;
                     unsigned flags = ptr->flags;
-                    if (flags & TOK_PSEUDO)
+                    if (start && flags & TOK_PSEUDO)
                         token += 0x40;
                     *basptr++ = token;
                     if (flags & TOK_MID) {
