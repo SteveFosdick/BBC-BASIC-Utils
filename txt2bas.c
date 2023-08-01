@@ -280,6 +280,7 @@ static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
                 const struct token *ptr = tokens;
                 const struct token *end = tokens + sizeof(tokens)/sizeof(struct token);
                 bool found = false;
+                toklno = false;
                 while (ptr < end) {
                     int tok_ch = ptr->text[0];
                     if (ch < tok_ch)
@@ -308,14 +309,10 @@ static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
                     if (start && flags & TOK_PSEUDO)
                         token += 0x40;
                     *basptr++ = token;
-                    if (flags & TOK_MID) {
+                    if (flags & TOK_MID)
                         start = false;
-                        toklno = false;
-                    }
-                    if (flags & TOK_START) {
+                    if (flags & TOK_START)
                         start = true;
-                        toklno = false;
-                    }
                     ch = *txtptr++;
                     if (flags & TOK_FNPROC) {
                         while (is_alpha(ch)) {
@@ -340,6 +337,7 @@ static int txt2bas(const char *fn, FILE *in_fp, FILE *out_fp)
                 }
             }
             else {
+                toklno = false;
                 *basptr++ = ch;
                 ch = *txtptr++;
             }
