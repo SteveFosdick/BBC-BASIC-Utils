@@ -1,0 +1,20 @@
+REM > BASWRIT
+F%=OPENOUT("bdata")
+IF F%=0 THEN PRINT"Unable to open output file":END
+ONERRORREPORT:PRINT" at line ";ERL:CLOSE#F%:END
+S$="The quick brown fox jumps over the lazy dog "
+Q$="Now is the time to bury the hatchet"
+L$=S$+S$+S$+S$+S$+Q$
+PRINT#F%,S$,L$,""
+REPEAT
+READ V%
+PRINT#F%,V%
+UNTILV%=0
+REPEAT
+READ V
+PRINT#F%,V
+UNTIL V=0
+CLOSE#F%
+END
+DATA &FFFFFFFF,&12345678,&98765432,0
+DATA 1,-1,2,3,-4343,4578321,-1.521640152E-36,2.37977495E21,0

@@ -53,3 +53,10 @@ dkms.conf
 bas2txt
 comal2txt
 txt2bas
+basprt
+basread
+baswrit
+*.inf
+bdata
+cdata
+basdata_test

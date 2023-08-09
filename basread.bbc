@@ -1,0 +1,50 @@
+REM > BASREAD
+S$="The quick brown fox jumps over the lazy dog "
+Q$="Now is the time to bury the hatchet"
+PROCfile("bdata")
+PROCfile("cdata")
+END
+DEF PROCfile(F$)
+F%=OPENIN(F$)
+IF F%=0 THEN PRINT"Unable to open input file ";F$:END
+ON ERROR REPORT:PRINT" at line ";ERL:CLOSE#F%:END
+PRINT'"Reading file ";F$
+RESTORE
+INPUT#F%,A$,B$,C$
+PROCstrcompare(A$,S$)
+PROCstrcompare(B$,S$+S$+S$+S$+S$+Q$)
+PROCstrcompare(C$,"")
+REPEAT
+READ E%
+INPUT#F%,V%
+IF V%<>E% PROCimis
+UNTILV%=0
+REPEAT
+READ E
+INPUT#F%,V
+IF V<>E PROCfmis
+UNTIL V=0
+CLOSE#F%
+ENDPROC
+DEFPROCstrcompare(G$,E$)
+IF G$=E$ ENDPROC
+PRINT "String mismatch"
+PRINT "Expected: ";E$
+PRINT "Got:      ";G$
+ENDPROC
+DEF PROCimis
+D%=ABS(E%-V%)
+PRINT "Integer mismatch in ";F$
+PRINT "Expected:",E%
+PRINT "Got:     ",V%
+PRINT "Delta    ",D%
+ENDPROC
+DEF PROCfmis
+D=ABS(E-V)
+PRINT "Floating mismatch in ";F$
+PRINT "Expected:",E
+PRINT "Got:     ",V
+PRINT "Delta    ",D
+ENDPROC
+DATA &FFFFFFFF,&12345678,&98765432,0
+DATA 1,-1,2,3,-4343,4578321,-1.521640152E-36,2.37977495E21,0

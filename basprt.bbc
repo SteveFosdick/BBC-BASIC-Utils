@@ -1,0 +1,10 @@
+REM > BASPRT
+INPUT "Filename",F$
+IF F$ = "" THEN F$="basdata"
+F%=OPENIN(F$)
+IF F%=0 THEN PRINT"Unable to open file ";F$:END
+REPEAT
+  INPUT#F%,N
+  PRINT N
+  UNTIL EOF#F%
+CLOSE#F%
