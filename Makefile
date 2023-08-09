@@ -1,7 +1,7 @@
 CC	= gcc
 CFLAGS	= -O2 -Wall
 
-PROGS = bas2txt comal2txt txt2bas basdata_test
+PROGS = bas2txt comal2txt txt2bas basdata2txt basdata_test
 
 all: $(PROGS) basprt basread baswrit libbasdata.a
 
@@ -14,6 +14,9 @@ $(MODULES): basdata.h
 
 libbasdata.a: $(MODULES)
 	ar rc libbasdata.a $(MODULES)
+
+basdata2txt: basdata2txt.o
+	$(CC) $(CFLAGS) -L . -o basdata2txt basdata2txt.o -lbasdata -lm
 
 basdata_test: basdata_test.c libbasdata.a
 	$(CC) $(CFLAGS) -L . -o basdata_test basdata_test.c -lbasdata -lm
