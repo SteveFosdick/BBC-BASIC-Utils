@@ -348,7 +348,6 @@ static void wilson2txt(unsigned char *prog, unsigned char *prog_end, const struc
 
 static unsigned char *is_russell(unsigned char *prog, unsigned char *file_end)
 {
-    file_end -= 3;
     while (prog < file_end) {
         if (prog[0] == 0x00 && prog[1] == 0xff && prog[2] == 0xff)
             return prog;
